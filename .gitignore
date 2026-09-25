@@ -1,0 +1,6 @@
+apps/sambahub/build/
+apps/sambahub/.dart_tool/
+.env
+*.env
+supabase/.branches/
+supabase/.temp/
