@@ -1,17 +1,38 @@
+# CHANGELOG
+# 2026-10-11: Autenticação trocada de SUPABASE_SERVICE_ROLE_KEY para
+#   MAINTENANCE_CRON_SECRET: a function maintenance-tasks passou a aceitar só
+#   esse secret (Authorization: Bearer <MAINTENANCE_CRON_SECRET>). O passo agora
+#   mostra o código HTTP e o corpo da resposta (antes, curl -f escondia o corpo
+#   do erro), falha com mensagem clara se algum secret estiver ausente, tem
+#   timeout e impede duas execuções sobrepostas. Agendamento (a cada 15 minutos)
+#   inalterado.
 name: Maintenance Tasks
 on:
   schedule:
     - cron: '*/15 * * * *'
   workflow_dispatch: {}
+concurrency:
+  group: maintenance-tasks
+  cancel-in-progress: false
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Chamar maintenance-tasks
-        run: |
-          curl -sf -X POST "$SUPABASE_URL/functions/v1/maintenance-tasks" \
-            -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
-            -H "Content-Type: application/json"
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          MAINTENANCE_CRON_SECRET: ${{ secrets.MAINTENANCE_CRON_SECRET }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$MAINTENANCE_CRON_SECRET" ]; then
+            echo "Secret ausente: configure SUPABASE_URL e MAINTENANCE_CRON_SECRET nos secrets do repositório."
+            exit 1
+          fi
+          status=$(curl -sS --max-time 60 -o response.json -w '%{http_code}' -X POST \
+            "$SUPABASE_URL/functions/v1/maintenance-tasks" \
+            -H "Authorization: Bearer $MAINTENANCE_CRON_SECRET" \
+            -H "Content-Type: application/json")
+          echo "HTTP $status"
+          cat response.json
+          echo
+          [ "$status" = "200" ]
